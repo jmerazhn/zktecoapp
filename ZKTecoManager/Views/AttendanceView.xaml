@@ -1,0 +1,208 @@
+<UserControl x:Class="ZKTecoManager.Views.AttendanceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Header ── -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Asistencia" Style="{StaticResource SectionHeader}" Margin="0"/>
+                <TextBlock Text="Registro diario de entradas, salidas y métricas por turno"
+                           Style="{StaticResource FieldLabel}" Margin="0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="Procesar Logs" Height="34" Padding="14,0" Margin="0,0,8,0"
+                        Style="{StaticResource AccentButton}"
+                        Command="{Binding ProcessLogsCommand}"/>
+                <Button Content="Actualizar" Height="34" Padding="14,0"
+                        Style="{StaticResource PrimaryButton}"
+                        Command="{Binding LoadCommand}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ── Filters ── -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14,12" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <ComboBox Grid.Column="0" ItemsSource="{Binding Companies}"
+                          SelectedItem="{Binding SelectedCompany}"
+                          DisplayMemberPath="Name" Padding="8,6" FontSize="12">
+                    <ComboBox.Resources><Style TargetType="TextBlock"><Setter Property="Text" Value="Empresa"/></Style></ComboBox.Resources>
+                </ComboBox>
+
+                <ComboBox Grid.Column="2" ItemsSource="{Binding Departments}"
+                          SelectedItem="{Binding SelectedDepartment}"
+                          DisplayMemberPath="Name" Padding="8,6" FontSize="12"/>
+
+                <ComboBox Grid.Column="4" ItemsSource="{Binding EmployeeList}"
+                          SelectedItem="{Binding SelectedEmployeeFilter}"
+                          DisplayMemberPath="FullName" Padding="8,6" FontSize="12"/>
+
+                <DatePicker Grid.Column="6" SelectedDate="{Binding DateFrom}"
+                            SelectedDateFormat="Short" Padding="6,5" FontSize="12"/>
+
+                <DatePicker Grid.Column="8" SelectedDate="{Binding DateTo}"
+                            SelectedDateFormat="Short" Padding="6,5" FontSize="12"/>
+
+                <Button Grid.Column="10" Content="Buscar" Height="34" Width="80"
+                        Style="{StaticResource PrimaryButton}"
+                        Command="{Binding LoadCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- ── Summary cards ── -->
+        <Grid Grid.Row="2" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Presentes -->
+            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="16,12">
+                <StackPanel>
+                    <TextBlock Text="Presentes" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding TotalPresent}" FontSize="28" FontWeight="Bold"
+                               Foreground="#22C55E" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Ausentes -->
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,12">
+                <StackPanel>
+                    <TextBlock Text="Ausentes" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding TotalAbsent}" FontSize="28" FontWeight="Bold"
+                               Foreground="#EF4444" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Tardanzas -->
+            <Border Grid.Column="4" Style="{StaticResource Card}" Padding="16,12">
+                <StackPanel>
+                    <TextBlock Text="Tardanzas" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding TotalLate}" FontSize="28" FontWeight="Bold"
+                               Foreground="#F59E0B" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Horas Extra -->
+            <Border Grid.Column="6" Style="{StaticResource Card}" Padding="16,12">
+                <StackPanel>
+                    <TextBlock Text="H. Extra Total" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding TotalOvertime, StringFormat='{}{0:F1} h'}"
+                               FontSize="28" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ── DataGrid ── -->
+        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
+            <DataGrid Style="{StaticResource ModernDataGrid}"
+                      ItemsSource="{Binding Records}"
+                      SelectedItem="{Binding SelectedRecord, Mode=TwoWay}"
+                      IsReadOnly="True" RowHeight="38">
+
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Opacity" Value="{Binding RowOpacity}"/>
+                    </Style>
+                </DataGrid.RowStyle>
+
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Fecha"       Binding="{Binding DateDisplay}"    Width="90"/>
+                    <DataGridTextColumn Header="Día"         Binding="{Binding DayOfWeek}"      Width="45"/>
+                    <DataGridTextColumn Header="Código"      Binding="{Binding EmployeeCode}"   Width="70"/>
+                    <DataGridTextColumn Header="Nombre"      Binding="{Binding EmployeeName}"   Width="150"/>
+                    <DataGridTextColumn Header="Dpto."       Binding="{Binding Department}"     Width="100"/>
+                    <DataGridTextColumn Header="Turno"       Binding="{Binding ShiftName}"      Width="90"/>
+                    <DataGridTextColumn Header="Entrada"     Binding="{Binding CheckInDisplay}" Width="65"/>
+                    <DataGridTextColumn Header="Salida"      Binding="{Binding CheckOutDisplay}" Width="65"/>
+                    <DataGridTextColumn Header="Horas"       Binding="{Binding HoursDisplay}"    Width="60"/>
+                    <DataGridTextColumn Header="Tardanza"    Binding="{Binding LateDisplay}"     Width="70"/>
+                    <DataGridTextColumn Header="H.Extra"     Binding="{Binding OvertimeDisplay}" Width="65"/>
+
+                    <!-- Status badge -->
+                    <DataGridTemplateColumn Header="Estado" Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="10" Padding="7,2"
+                                        HorizontalAlignment="Left" Margin="6,0"
+                                        Background="{Binding StatusBrush}">
+                                    <TextBlock Text="{Binding StatusLabel}"
+                                               FontSize="11" Foreground="White"/>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="Notas" Binding="{Binding Notes}" Width="120"/>
+
+                    <!-- Actions -->
+                    <DataGridTemplateColumn Header="" Width="70">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Editar" Width="58" Height="26" Margin="6,0"
+                                        FontSize="11" Style="{StaticResource PrimaryButton}"
+                                        Command="{Binding DataContext.EditRecordCommand,
+                                                  RelativeSource={RelativeSource AncestorType=DataGrid}}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- ── Status bar ── -->
+        <Border Grid.Row="4" Margin="0,12,0,0" Padding="12,8"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="6">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Records.Count, StringFormat='{}{0} registro(s)'}"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+                    <TextBlock Text="  ·  " Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
+                               Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+                </StackPanel>
+                <ProgressBar IsIndeterminate="True" Height="4" HorizontalAlignment="Right" Width="120"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

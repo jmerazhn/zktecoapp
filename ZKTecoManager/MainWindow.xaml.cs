@@ -30,6 +30,7 @@ public partial class MainWindow : Window
         {
             "Devices"    => _currentScope.ServiceProvider.GetRequiredService<DevicesView>(),
             "Employees"  => _currentScope.ServiceProvider.GetRequiredService<EmployeesView>(),
+            "Attendance" => _currentScope.ServiceProvider.GetRequiredService<AttendanceView>(),
             _            => CreatePlaceholder(btn.Content?.ToString()?.Trim() ?? "")
         };
     }

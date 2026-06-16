@@ -53,14 +53,17 @@ public partial class App : Application
         // Services (singleton — manage long-lived state)
         services.AddSingleton<IDeviceService, DeviceService>();
         services.AddSingleton<IEmployeeService, EmployeeService>();
+        services.AddSingleton<IAttendanceService, AttendanceService>();
 
         // ViewModels (scoped — resolved per navigation scope)
         services.AddScoped<DevicesViewModel>();
         services.AddScoped<EmployeesViewModel>();
+        services.AddScoped<AttendanceViewModel>();
 
         // Views (scoped — same scope as their ViewModel)
         services.AddScoped<DevicesView>();
         services.AddScoped<EmployeesView>();
+        services.AddScoped<AttendanceView>();
 
         // Shell (singleton)
         services.AddSingleton<MainWindow>();
