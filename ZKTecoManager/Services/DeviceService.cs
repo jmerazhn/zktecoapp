@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using ZKTecoManager.Data;
 using ZKTecoManager.Data.Repositories.Interfaces;
@@ -22,28 +23,47 @@ public class DeviceService : IDeviceService, IDisposable
 
     public async Task<ConnectionTestResult> TestConnectionAsync(Device device, CancellationToken ct = default)
     {
-        // Step 1: TCP reachability — fast check before involving the SDK
+        // Step 1: ICMP ping — ¿llega el host?
+        bool pingOk;
+        try
+        {
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync(device.IpAddress, 1000);
+            pingOk = reply.Status == IPStatus.Success;
+        }
+        catch { pingOk = false; }
+
+        if (!pingOk)
+            return new ConnectionTestResult(false,
+                $"El dispositivo no responde en {device.IpAddress}.\n\n" +
+                "Qué verificar:\n" +
+                $"• Abra CMD y ejecute:  ping {device.IpAddress}\n" +
+                "• Confirme la IP desde el menú del reloj:\n" +
+                "  Menú → Comm → Ethernet → IP Address\n" +
+                "• Algunos relojes requieren reinicio después de cambiar la IP\n" +
+                "• Verifique que el reloj y la PC estén en la misma red/subred");
+
+        // Step 2: TCP port — ¿responde el puerto?
         bool portOpen;
         try
         {
             using var tcp = new TcpClient();
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(2000);
+            cts.CancelAfter(1500);
             await tcp.ConnectAsync(device.IpAddress, device.Port, cts.Token);
             portOpen = true;
         }
-        catch
-        {
-            portOpen = false;
-        }
+        catch { portOpen = false; }
 
         if (!portOpen)
             return new ConnectionTestResult(false,
-                $"No se puede alcanzar {device.IpAddress}:{device.Port}.\n" +
-                "Verifique que:\n" +
-                "• El reloj esté encendido y conectado a la red\n" +
-                "• La IP y el puerto sean correctos\n" +
-                "• El firewall de Windows permita el puerto");
+                $"El reloj responde al ping en {device.IpAddress} " +
+                $"pero el puerto {device.Port} está bloqueado.\n\n" +
+                "Qué verificar:\n" +
+                $"• Firewall de Windows: permita el puerto {device.Port} TCP\n" +
+                "• Firewall del router/switch entre la PC y el reloj\n" +
+                $"• Confirme el puerto en el reloj (por defecto 4370):\n" +
+                "  Menú → Comm → Ethernet → Port");
 
         // Step 2: SDK handshake — try stored password first, then empty password
         return await Task.Run(() =>

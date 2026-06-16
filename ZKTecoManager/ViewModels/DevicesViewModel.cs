@@ -138,7 +138,7 @@ public partial class DevicesViewModel : ViewModelBase
     {
         var item = SelectedDevice!;
         item.Status = DeviceConnectionStatus.Connecting;
-        StatusMessage = $"Conectando a {item.IpAddress}:{item.Port}...";
+        StatusMessage = $"Verificando {item.IpAddress}:{item.Port}...";
 
         var result = await _deviceService.TestConnectionAsync(item.Device);
 
