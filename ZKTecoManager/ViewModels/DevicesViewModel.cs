@@ -144,9 +144,16 @@ public partial class DevicesViewModel : ViewModelBase
 
         item.Status = result.Connected ? DeviceConnectionStatus.Connected : DeviceConnectionStatus.Error;
 
-        if (result.Connected)
+        if (result.Connected && result.Error is null)
         {
             StatusMessage = $"Conexión exitosa con {item.Name}";
+        }
+        else if (result.Connected && result.Error is not null)
+        {
+            // Connected but with a warning (e.g. password mismatch detected)
+            StatusMessage = $"Conectado con advertencia — {item.Name}";
+            MessageBox.Show(result.Error, $"Advertencia — {item.Name}",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         else
         {

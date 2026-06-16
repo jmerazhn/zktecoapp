@@ -45,20 +45,42 @@ public class DeviceService : IDeviceService, IDisposable
                 "• La IP y el puerto sean correctos\n" +
                 "• El firewall de Windows permita el puerto");
 
-        // Step 2: SDK handshake
+        // Step 2: SDK handshake — try stored password first, then empty password
         return await Task.Run(() =>
         {
             var zk = GetOrCreate(device);
+
+            // First attempt: stored CommPassword
             if (!zk.IsConnected)
                 zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty);
 
             if (zk.IsConnected)
                 return new ConnectionTestResult(true, null);
 
+            // Second attempt: if password was non-empty, retry with empty (device default)
+            var storedPwd = device.CommPassword ?? string.Empty;
+            if (storedPwd.Length > 0)
+            {
+                zk.Connect(timeout: 4000, password: string.Empty);
+                if (zk.IsConnected)
+                    return new ConnectionTestResult(true,
+                        "⚠ Conectado con contraseña vacía. " +
+                        "La contraseña guardada en BD no coincide con el dispositivo. " +
+                        "Edite el dispositivo y deje CommPassword en blanco.");
+            }
+
+            var pwdHint = storedPwd.Length == 0
+                ? "vacía"
+                : $"\"{new string('*', storedPwd.Length)}\" ({storedPwd.Length} caracteres)";
+
             return new ConnectionTestResult(false,
                 $"El puerto {device.Port} responde en {device.IpAddress} " +
-                "pero el SDK no estableció sesión.\n" +
-                "Verifique la contraseña de comunicación (CommPassword) del dispositivo.");
+                $"pero el SDK rechazó la sesión (contraseña usada: {pwdHint}).\n\n" +
+                "Posibles causas:\n" +
+                "• CommPassword incorrecto — verifique en el menú del reloj\n  " +
+                "  (Comm → PC Connection Password / Red → Contraseña)\n" +
+                "• Otro programa (ZKTime, ZKBioSecurity) ocupa la conexión\n" +
+                "• El dispositivo no soporta el protocolo Pull SDK");
         }, ct);
     }
 
