@@ -9,6 +9,7 @@ using ZKTecoManager.Helpers;
 using ZKTecoManager.Services;
 using ZKTecoManager.ViewModels;
 using ZKTecoManager.Views;
+using ZKTecoManager.Views.Dialogs;
 
 namespace ZKTecoManager;
 
@@ -25,20 +26,49 @@ public partial class App : Application
             .AddJsonFile("appsettings.json", optional: false)
             .Build();
 
-        var services = new ServiceCollection();
-        ConfigureServices(services, config);
-        _services = services.BuildServiceProvider();
-        ServiceLocator.Initialize(_services);
+        // Load connection config from AppData (or defaults)
+        var connCfg = ConnectionConfig.Load();
+
+        while (true)
+        {
+            _services = BuildServiceProvider(config, connCfg.BuildConnectionString());
+            ServiceLocator.Initialize(_services);
+
+            var (ok, errorMsg) = TryEnsureDatabase(_services);
+            if (ok) break;
+
+            // Connection failed — show settings dialog
+            var dlg = new DatabaseSettingsDialog(connCfg)
+            {
+                Title = $"Error de conexión — {dlg_Title(errorMsg)}"
+            };
+
+            if (dlg.ShowDialog() != true)
+            {
+                Current.Shutdown();
+                return;
+            }
+
+            connCfg = dlg.Result!;
+            connCfg.Save();
+        }
 
         var mainWindow = _services.GetRequiredService<MainWindow>();
         mainWindow.Show();
     }
 
-    private static void ConfigureServices(IServiceCollection services, IConfiguration config)
+    internal static IServiceProvider BuildServiceProvider(IConfiguration config, string connectionString)
+    {
+        var services = new ServiceCollection();
+        ConfigureServices(services, config, connectionString);
+        return services.BuildServiceProvider();
+    }
+
+    private static void ConfigureServices(IServiceCollection services, IConfiguration config, string connectionString)
     {
         // EF Core (scoped → one DbContext per navigation scope)
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(config.GetConnectionString("DefaultConnection")));
+            options.UseSqlServer(connectionString));
 
         // Repositories (scoped)
         services.AddScoped<ICompanyRepository, CompanyRepository>();
@@ -76,9 +106,27 @@ public partial class App : Application
         services.AddSingleton(config);
     }
 
+    private static (bool ok, string error) TryEnsureDatabase(IServiceProvider services)
+    {
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
+            return (true, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    private static string dlg_Title(string error)
+        => error.Length > 60 ? error[..60] + "…" : error;
+
     protected override void OnExit(ExitEventArgs e)
     {
-        ServiceLocator.GetService<IDeviceService>().DisconnectAll();
+        try { ServiceLocator.GetService<IDeviceService>().DisconnectAll(); } catch { }
         (_services as IDisposable)?.Dispose();
         base.OnExit(e);
     }

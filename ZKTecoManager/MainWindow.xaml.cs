@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Windows;
 using System.Windows.Controls;
 using ZKTecoManager.Helpers;
+using ZKTecoManager.Services;
 using ZKTecoManager.Views;
+using ZKTecoManager.Views.Dialogs;
 
 namespace ZKTecoManager;
 
@@ -33,6 +36,7 @@ public partial class MainWindow : Window
             "Attendance" => _currentScope.ServiceProvider.GetRequiredService<AttendanceView>(),
             "Incidents"  => _currentScope.ServiceProvider.GetRequiredService<IncidentsView>(),
             "Reports"    => _currentScope.ServiceProvider.GetRequiredService<ReportsView>(),
+            "DbSettings" => ShowDbSettings(),
             _            => CreatePlaceholder(btn.Content?.ToString()?.Trim() ?? "")
         };
     }
@@ -44,6 +48,29 @@ public partial class MainWindow : Window
         _activeNav = btn;
         btn.Background = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(0x2E, 0x4D, 0x7A));
+    }
+
+    private UIElement ShowDbSettings()
+    {
+        var current = ConnectionConfig.Load();
+        var dlg = new DatabaseSettingsDialog(current) { Owner = this };
+        if (dlg.ShowDialog() != true) return MainContent.Content as UIElement ?? CreatePlaceholder("");
+
+        var newCfg = dlg.Result!;
+        newCfg.Save();
+
+        var result = MessageBox.Show(
+            "Configuración guardada. ¿Reiniciar la aplicación para aplicar los cambios?",
+            "Reiniciar", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            System.Diagnostics.Process.Start(
+                System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName);
+            Application.Current.Shutdown();
+        }
+
+        return MainContent.Content as UIElement ?? CreatePlaceholder("");
     }
 
     private static UIElement CreatePlaceholder(string module) =>

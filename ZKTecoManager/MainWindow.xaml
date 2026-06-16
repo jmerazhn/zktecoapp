@@ -35,10 +35,16 @@
                     <Button x:Name="BtnReports"   Content="  Reportes"      Tag="Reports"   Style="{StaticResource NavButton}" Click="Nav_Click"/>
                 </StackPanel>
 
+                <!-- Settings button at bottom -->
+                <Button DockPanel.Dock="Bottom"
+                        Content="  Conexión BD" Tag="DbSettings"
+                        Style="{StaticResource NavButton}"
+                        Click="Nav_Click" Margin="0,0,0,4"/>
+
                 <!-- Version at bottom -->
                 <TextBlock DockPanel.Dock="Bottom" Text="v1.0.0"
                            Foreground="#4A6A8A" FontSize="11"
-                           Margin="20,0,0,16" VerticalAlignment="Bottom"/>
+                           Margin="20,0,0,8" VerticalAlignment="Bottom"/>
             </DockPanel>
         </Border>
 
