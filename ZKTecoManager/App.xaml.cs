@@ -54,16 +54,21 @@ public partial class App : Application
         services.AddSingleton<IDeviceService, DeviceService>();
         services.AddSingleton<IEmployeeService, EmployeeService>();
         services.AddSingleton<IAttendanceService, AttendanceService>();
+        services.AddSingleton<IReportService, ReportService>();
 
         // ViewModels (scoped — resolved per navigation scope)
         services.AddScoped<DevicesViewModel>();
         services.AddScoped<EmployeesViewModel>();
         services.AddScoped<AttendanceViewModel>();
+        services.AddScoped<IncidentsViewModel>();
+        services.AddScoped<ReportsViewModel>();
 
         // Views (scoped — same scope as their ViewModel)
         services.AddScoped<DevicesView>();
         services.AddScoped<EmployeesView>();
         services.AddScoped<AttendanceView>();
+        services.AddScoped<IncidentsView>();
+        services.AddScoped<ReportsView>();
 
         // Shell (singleton)
         services.AddSingleton<MainWindow>();

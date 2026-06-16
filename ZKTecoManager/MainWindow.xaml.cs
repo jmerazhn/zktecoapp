@@ -31,6 +31,8 @@ public partial class MainWindow : Window
             "Devices"    => _currentScope.ServiceProvider.GetRequiredService<DevicesView>(),
             "Employees"  => _currentScope.ServiceProvider.GetRequiredService<EmployeesView>(),
             "Attendance" => _currentScope.ServiceProvider.GetRequiredService<AttendanceView>(),
+            "Incidents"  => _currentScope.ServiceProvider.GetRequiredService<IncidentsView>(),
+            "Reports"    => _currentScope.ServiceProvider.GetRequiredService<ReportsView>(),
             _            => CreatePlaceholder(btn.Content?.ToString()?.Trim() ?? "")
         };
     }
