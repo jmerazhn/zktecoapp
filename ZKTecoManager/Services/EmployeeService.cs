@@ -21,8 +21,8 @@ public class EmployeeService : IEmployeeService
     {
         return await Task.Run(async () =>
         {
-            var ok = await _deviceService.TestConnectionAsync(device, ct);
-            if (!ok) return new EnrollResult(false, "No se pudo conectar al dispositivo.");
+            var connResult = await _deviceService.TestConnectionAsync(device, ct);
+            if (!connResult.Connected) return new EnrollResult(false, connResult.Error ?? "No se pudo conectar al dispositivo.");
 
             // Get the ZKTecoDevice from the pool via DeviceService internal state
             // We reuse the connection pool by calling through the service
@@ -36,8 +36,8 @@ public class EmployeeService : IEmployeeService
     {
         return await Task.Run(async () =>
         {
-            var ok = await _deviceService.TestConnectionAsync(device, ct);
-            if (!ok) return new EnrollResult(false, "No se pudo conectar al dispositivo.");
+            var connResult = await _deviceService.TestConnectionAsync(device, ct);
+            if (!connResult.Connected) return new EnrollResult(false, connResult.Error ?? "No se pudo conectar al dispositivo.");
 
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -66,8 +66,8 @@ public class EmployeeService : IEmployeeService
             if (string.IsNullOrEmpty(employee.CardNumber))
                 return new EnrollResult(false, "El empleado no tiene número de tarjeta asignado.");
 
-            var ok = await _deviceService.TestConnectionAsync(device, ct);
-            if (!ok) return new EnrollResult(false, "No se pudo conectar al dispositivo.");
+            var connResult = await _deviceService.TestConnectionAsync(device, ct);
+            if (!connResult.Connected) return new EnrollResult(false, connResult.Error ?? "No se pudo conectar al dispositivo.");
 
             var cardSet = await _deviceService.SetCardOnDeviceAsync(device, employee.EmployeeCode, employee.CardNumber, ct);
             if (!cardSet) return new EnrollResult(false, "No se pudo actualizar la tarjeta en el dispositivo.");

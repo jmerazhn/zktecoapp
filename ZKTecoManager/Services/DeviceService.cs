@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Net.Sockets;
 using ZKTecoManager.Data;
 using ZKTecoManager.Data.Repositories.Interfaces;
 using ZKTecoManager.Infrastructure.ZKTeco;
@@ -19,14 +20,45 @@ public class DeviceService : IDeviceService, IDisposable
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    public async Task<bool> TestConnectionAsync(Device device, CancellationToken ct = default)
+    public async Task<ConnectionTestResult> TestConnectionAsync(Device device, CancellationToken ct = default)
     {
+        // Step 1: TCP reachability — fast check before involving the SDK
+        bool portOpen;
+        try
+        {
+            using var tcp = new TcpClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(2000);
+            await tcp.ConnectAsync(device.IpAddress, device.Port, cts.Token);
+            portOpen = true;
+        }
+        catch
+        {
+            portOpen = false;
+        }
+
+        if (!portOpen)
+            return new ConnectionTestResult(false,
+                $"No se puede alcanzar {device.IpAddress}:{device.Port}.\n" +
+                "Verifique que:\n" +
+                "• El reloj esté encendido y conectado a la red\n" +
+                "• La IP y el puerto sean correctos\n" +
+                "• El firewall de Windows permita el puerto");
+
+        // Step 2: SDK handshake
         return await Task.Run(() =>
         {
             var zk = GetOrCreate(device);
             if (!zk.IsConnected)
                 zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty);
-            return zk.IsConnected;
+
+            if (zk.IsConnected)
+                return new ConnectionTestResult(true, null);
+
+            return new ConnectionTestResult(false,
+                $"El puerto {device.Port} responde en {device.IpAddress} " +
+                "pero el SDK no estableció sesión.\n" +
+                "Verifique la contraseña de comunicación (CommPassword) del dispositivo.");
         }, ct);
     }
 

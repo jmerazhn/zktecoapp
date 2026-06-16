@@ -139,9 +139,21 @@ public partial class DevicesViewModel : ViewModelBase
         var item = SelectedDevice!;
         item.Status = DeviceConnectionStatus.Connecting;
         StatusMessage = $"Conectando a {item.IpAddress}:{item.Port}...";
-        var ok = await _deviceService.TestConnectionAsync(item.Device);
-        item.Status = ok ? DeviceConnectionStatus.Connected : DeviceConnectionStatus.Error;
-        StatusMessage = ok ? $"Conexión exitosa con {item.Name}" : $"No se pudo conectar a {item.Name}";
+
+        var result = await _deviceService.TestConnectionAsync(item.Device);
+
+        item.Status = result.Connected ? DeviceConnectionStatus.Connected : DeviceConnectionStatus.Error;
+
+        if (result.Connected)
+        {
+            StatusMessage = $"Conexión exitosa con {item.Name}";
+        }
+        else
+        {
+            StatusMessage = $"Error: {item.Name}";
+            MessageBox.Show(result.Error, $"No se pudo conectar a {item.Name}",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
