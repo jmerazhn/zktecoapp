@@ -1,5 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:helpers="clr-namespace:ZKTecoManager.Helpers">
+
+    <helpers:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
 
     <!-- Base Button -->
     <Style x:Key="PrimaryButton" TargetType="Button">

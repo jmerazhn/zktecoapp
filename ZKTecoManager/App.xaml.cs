@@ -6,6 +6,9 @@ using ZKTecoManager.Data;
 using ZKTecoManager.Data.Repositories;
 using ZKTecoManager.Data.Repositories.Interfaces;
 using ZKTecoManager.Helpers;
+using ZKTecoManager.Services;
+using ZKTecoManager.ViewModels;
+using ZKTecoManager.Views;
 
 namespace ZKTecoManager;
 
@@ -34,9 +37,11 @@ public partial class App : Application
 
     private static void ConfigureServices(IServiceCollection services, IConfiguration config)
     {
+        // EF Core
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(config.GetConnectionString("DefaultConnection")));
 
+        // Repositories (scoped)
         services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<IDepartmentRepository, DepartmentRepository>();
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
@@ -46,12 +51,22 @@ public partial class App : Application
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IWorkShiftRepository, WorkShiftRepository>();
 
+        // Services (singleton — manages connection pool)
+        services.AddSingleton<IDeviceService, DeviceService>();
+
+        // ViewModels (transient — fresh instance per navigation)
+        services.AddTransient<DevicesViewModel>();
+
+        // Views (transient)
+        services.AddTransient<DevicesView>();
         services.AddTransient<MainWindow>();
+
         services.AddSingleton(config);
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        ServiceLocator.GetService<IDeviceService>().DisconnectAll();
         (_services as IDisposable)?.Dispose();
         base.OnExit(e);
     }
