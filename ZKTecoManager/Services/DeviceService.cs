@@ -91,16 +91,25 @@ public class DeviceService : IDeviceService, IDisposable
 
             var pwdHint = storedPwd.Length == 0
                 ? "vacía"
-                : $"\"{new string('*', storedPwd.Length)}\" ({storedPwd.Length} caracteres)";
+                : $"{storedPwd.Length} caracteres";
+
+            var localIp = GetLocalIp();
 
             return new ConnectionTestResult(false,
-                $"El puerto {device.Port} responde en {device.IpAddress} " +
-                $"pero el SDK rechazó la sesión (contraseña usada: {pwdHint}).\n\n" +
-                "Posibles causas:\n" +
-                "• CommPassword incorrecto — verifique en el menú del reloj\n  " +
-                "  (Comm → PC Connection Password / Red → Contraseña)\n" +
-                "• Otro programa (ZKTime, ZKBioSecurity) ocupa la conexión\n" +
-                "• El dispositivo no soporta el protocolo Pull SDK");
+                $"Puerto {device.Port} responde en {device.IpAddress} " +
+                $"pero el SDK rechazó la sesión.\n\n" +
+                $"IP de esta PC: {localIp}\n" +
+                $"Contraseña usada: {pwdHint}\n\n" +
+                "Causas más comunes (en orden de probabilidad):\n\n" +
+                "1. «Server IP» en el reloj no coincide con la IP de esta PC\n" +
+                $"   Menú → Comm → PC Connection → Server IP\n" +
+                $"   Cámbielo a 0.0.0.0 (cualquier PC) o a {localIp}\n\n" +
+                "2. CommPassword incorrecto\n" +
+                "   Menú → Comm → PC Connection Password\n" +
+                "   Si dice 0 o vacío, deje el campo en blanco en la app\n\n" +
+                "3. Otro software ZKTeco ocupa la conexión\n" +
+                "   (ZKTime, ZKBioSecurity, ZKAccess)\n\n" +
+                "4. Firmware incompatible con Pull SDK");
         }, ct);
     }
 
@@ -263,6 +272,19 @@ public class DeviceService : IDeviceService, IDisposable
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static string GetLocalIp()
+    {
+        try
+        {
+            using var s = new System.Net.Sockets.Socket(
+                System.Net.Sockets.AddressFamily.InterNetwork,
+                System.Net.Sockets.SocketType.Dgram, 0);
+            s.Connect("8.8.8.8", 65530);
+            return (s.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "desconocida";
+        }
+        catch { return "desconocida"; }
+    }
 
     private ZKTecoDevice GetOrCreate(Device device)
     {
