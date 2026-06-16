@@ -89,15 +89,13 @@ public class DeviceService : IDeviceService, IDisposable
                         "Edite el dispositivo y deje CommPassword en blanco.");
             }
 
-            var pwdHint = storedPwd.Length == 0
-                ? "vacía"
-                : $"{storedPwd.Length} caracteres";
-
-            var localIp = GetLocalIp();
+            var sdkError = zk.LastError;
+            var pwdHint  = storedPwd.Length == 0 ? "vacía" : $"{storedPwd.Length} caracteres";
+            var localIp  = GetLocalIp();
 
             return new ConnectionTestResult(false,
                 $"Puerto {device.Port} responde en {device.IpAddress} " +
-                $"pero el SDK rechazó la sesión.\n\n" +
+                $"pero el SDK rechazó la sesión (PullLastError={sdkError}).\n\n" +
                 $"IP de esta PC: {localIp}\n" +
                 $"Contraseña usada: {pwdHint}\n\n" +
                 "Causas más comunes (en orden de probabilidad):\n\n" +

@@ -1,5 +1,4 @@
 using System.Text;
-using ZKTecoManager.Models.Entities;
 using ZKTecoManager.Models.Enums;
 
 namespace ZKTecoManager.Infrastructure.ZKTeco;
@@ -20,14 +19,15 @@ public class ZKTecoDevice : IDisposable
     private readonly object _lock = new();
     private bool _disposed;
 
-    public string IpAddress { get; }
-    public int Port { get; }
-    public bool IsConnected => _handle != IntPtr.Zero;
+    public string IpAddress  { get; }
+    public int    Port       { get; }
+    public int    LastError  { get; private set; }
+    public bool   IsConnected => _handle != IntPtr.Zero;
 
     public ZKTecoDevice(string ipAddress, int port)
     {
         IpAddress = ipAddress;
-        Port = port;
+        Port      = port;
     }
 
     // ── Connection ────────────────────────────────────────────────────────────
@@ -37,9 +37,20 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             if (_handle != IntPtr.Zero) return true;
-            var connStr = $"protocol=TCP,ipaddress={IpAddress},port={Port},timeout={timeout},passwd={password}";
+
+            var connStr = $"protocol=TCP,ipaddress={IpAddress},port={Port}," +
+                          $"timeout={timeout},passwd={password}";
+
             _handle = ZKTecoSdk.Connect(connStr);
-            return _handle != IntPtr.Zero;
+
+            if (_handle == IntPtr.Zero)
+            {
+                LastError = ZKTecoSdk.PullLastError();
+                return false;
+            }
+
+            LastError = 0;
+            return true;
         }
     }
 
@@ -60,10 +71,11 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            byte[] buf = new byte[512];
-            int result = ZKTecoSdk.GetDeviceParam(_handle, ref buf[0], buf.Length, paramName);
-            if (result < 0) return null;
-            return Encoding.ASCII.GetString(buf).TrimEnd('\0');
+            var buf = new byte[1024];
+            int ret = ZKTecoSdk.GetDeviceParam(_handle, ref buf[0], buf.Length, paramName);
+            if (ret < 0) return null;
+            int end = Array.IndexOf(buf, (byte)0);
+            return Encoding.UTF8.GetString(buf, 0, end < 0 ? buf.Length : end);
         }
     }
 
@@ -72,10 +84,11 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
-            int r = ZKTecoSdk.GetDeviceTime(_handle, ref year, ref month, ref day, ref hour, ref minute, ref second);
+            int yr = 0, mo = 0, dy = 0, hh = 0, mm = 0, ss = 0;
+            int r = ZKTecoSdk.GetDeviceTime(_handle, ref yr, ref mo, ref dy,
+                                             ref hh, ref mm, ref ss);
             if (r < 0) return null;
-            return new DateTime(year, month, day, hour, minute, second);
+            return new DateTime(yr, mo, dy, hh, mm, ss);
         }
     }
 
@@ -85,25 +98,26 @@ public class ZKTecoDevice : IDisposable
         {
             EnsureConnected();
             var now = DateTime.Now;
-            return ZKTecoSdk.SetDeviceTime2(_handle, now.Year, now.Month, now.Day,
-                now.Hour, now.Minute, now.Second) >= 0;
+            int ret = ZKTecoSdk.SetDeviceParam(_handle,
+                $"DateTime={now:yyyy-MM-dd HH:mm:ss}");
+            return ret >= 0;
         }
     }
 
     // ── Attendance logs ───────────────────────────────────────────────────────
 
-    /// <summary>Descarga todos los logs de asistencia del reloj.</summary>
     public List<AttendanceRawLog> DownloadLogs()
     {
         lock (_lock)
         {
             EnsureConnected();
-            byte[] buf = new byte[1024 * 1024 * 4]; // 4 MB
-            int size = 0;
-            int result = ZKTecoSdk.ReadGeneralLogData(_handle, ref buf[0], buf.Length, ref size);
-            if (result < 0 || size == 0) return new();
+            var buf = new byte[32 * 1024 * 1024];
+            int ret = ZKTecoSdk.GetDeviceData(_handle, ref buf[0], buf.Length,
+                "attlog", "Pin,Time,Status,Verify,WorkCode", "", "");
 
-            var raw = Encoding.ASCII.GetString(buf, 0, size);
+            if (ret < 0) return new();
+
+            var raw = Encoding.UTF8.GetString(buf, 0, ret);
             return ParseLogs(raw);
         }
     }
@@ -113,7 +127,7 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            return ZKTecoSdk.ClearGLog(_handle) >= 0;
+            return ZKTecoSdk.DeleteDeviceData(_handle, "attlog", "", "") >= 0;
         }
     }
 
@@ -124,7 +138,9 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            return ZKTecoSdk.SSR_SetUserInfo(_handle, pin, name, password, privilege, true) >= 0;
+            string data = $"Pin={pin}\tName={name}\tPri={privilege}\t" +
+                          $"Passwd={password}\tCard=\tGrp=1\tTZ=1\tVerify=0";
+            return ZKTecoSdk.SetDeviceData(_handle, "user", data, "") == 0;
         }
     }
 
@@ -133,7 +149,7 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            return ZKTecoSdk.DeleteUser(_handle, 1, pin, 0) >= 0;
+            return ZKTecoSdk.DeleteDeviceData(_handle, "user", $"Pin={pin}", "") >= 0;
         }
     }
 
@@ -142,10 +158,8 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            int errCount = 0;
-            ZKTecoSdk.BeginBatchWrite(_handle);
-            ZKTecoSdk.BatchWriteCard(_handle, pin, cardNumber, 1);
-            return ZKTecoSdk.EndBatchWrite(_handle, ref errCount) >= 0 && errCount == 0;
+            string data = $"Pin={pin}\tCard={cardNumber}";
+            return ZKTecoSdk.SetDeviceData(_handle, "user", data, "") == 0;
         }
     }
 
@@ -154,29 +168,51 @@ public class ZKTecoDevice : IDisposable
     private static List<AttendanceRawLog> ParseLogs(string raw)
     {
         var logs = new List<AttendanceRawLog>();
-        // Pull SDK format: PIN\tDateTime\tVerifyMethod\tPunchType\tWorkCode\r\n
+
         foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var trimmed = line.Trim();
             if (string.IsNullOrEmpty(trimmed)) continue;
-            var parts = trimmed.Split('\t');
-            if (parts.Length < 4) continue;
 
-            if (!DateTime.TryParse(parts[1], out var dt)) continue;
-            if (!byte.TryParse(parts[2], out var vm)) continue;
-            if (!byte.TryParse(parts[3], out var pt)) continue;
+            // GetDeviceData returns key=value\tkey=value per line
+            var fields = ParseFields(trimmed);
+
+            if (!fields.TryGetValue("Pin", out var pin) ||
+                !fields.TryGetValue("Time", out var timeStr) ||
+                !DateTime.TryParse(timeStr, out var dt))
+                continue;
+
+            fields.TryGetValue("Status",   out var statusStr);
+            fields.TryGetValue("Verify",   out var verifyStr);
+            fields.TryGetValue("WorkCode", out var workCode);
+
+            byte.TryParse(statusStr, out var statusByte);
+            byte.TryParse(verifyStr, out var verifyByte);
 
             logs.Add(new AttendanceRawLog
             {
-                Pin = parts[0],
-                PunchTime = dt,
-                VerifyMethod = (VerifyMethod)vm,
-                PunchType = (PunchType)pt,
-                WorkCode = parts.Length > 4 ? parts[4] : null,
-                Raw = trimmed
+                Pin          = pin,
+                PunchTime    = dt,
+                PunchType    = (PunchType)statusByte,
+                VerifyMethod = (VerifyMethod)verifyByte,
+                WorkCode     = workCode,
+                Raw          = trimmed
             });
         }
+
         return logs;
+    }
+
+    private static Dictionary<string, string> ParseFields(string line)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in line.Split('\t'))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2)
+                dict[kv[0].Trim()] = kv[1].Trim();
+        }
+        return dict;
     }
 
     private void EnsureConnected()
