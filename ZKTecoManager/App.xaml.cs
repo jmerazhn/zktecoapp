@@ -122,45 +122,32 @@ public partial class App : Application
         }
     }
 
-    // Replaces the old unfiltered unique index on Device(IpAddress,Port) with a
-    // filtered one (WHERE IsActive = 1) so soft-deleted rows don't block re-insertion.
+    // Best-effort: replace unfiltered unique index on Device(IpAddress,Port)
+    // with a filtered one (WHERE IsActive=1). Never throws — startup must not fail here.
     private static void FixDeviceUniqueIndex(AppDbContext db)
     {
-        db.Database.ExecuteSqlRaw("""
-            DECLARE @idx nvarchar(128) = (
-                SELECT i.name
-                FROM sys.indexes i
-                JOIN sys.tables t ON i.object_id = t.object_id
-                WHERE t.name = 'Device'
-                  AND i.is_unique = 1
-                  AND i.filter_definition IS NULL
-                  AND EXISTS (
-                      SELECT 1 FROM sys.index_columns ic
-                      JOIN sys.columns c
-                        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-                      WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id
-                        AND c.name = 'IpAddress')
-                  AND EXISTS (
-                      SELECT 1 FROM sys.index_columns ic
-                      JOIN sys.columns c
-                        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-                      WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id
-                        AND c.name = 'Port')
-            );
-            IF @idx IS NOT NULL
-                EXEC('DROP INDEX [' + @idx + '] ON [Device]');
+        // Drop every known unfiltered unique index name on this table
+        foreach (var name in new[] { "UQ_Device_IP", "UQ_Device_IpAddress_Port",
+                                     "IX_Device_IpAddress_Port", "IX_Device_IpAddress_Port_Active" })
+        {
+            try { db.Database.ExecuteSqlRaw(
+                    $"IF EXISTS(SELECT 1 FROM sys.indexes WHERE name='{name}' " +
+                    $"AND object_id=OBJECT_ID('Device') AND filter_definition IS NULL) " +
+                    $"DROP INDEX [{name}] ON [Device]"); }
+            catch { /* index didn't exist or couldn't be dropped — continue */ }
+        }
 
-            IF NOT EXISTS (
-                SELECT 1 FROM sys.indexes
-                WHERE name = 'IX_Device_IpAddress_Port'
-                  AND object_id = OBJECT_ID('Device')
-                  AND filter_definition IS NOT NULL)
-            BEGIN
-                CREATE UNIQUE INDEX [IX_Device_IpAddress_Port]
-                ON [Device]([IpAddress],[Port])
-                WHERE [IsActive] = 1;
-            END
-            """);
+        // Create filtered index if it doesn't exist yet
+        try
+        {
+            db.Database.ExecuteSqlRaw(
+                "IF NOT EXISTS(SELECT 1 FROM sys.indexes " +
+                "WHERE name='IX_Device_IpAddress_Port' AND object_id=OBJECT_ID('Device') " +
+                "AND filter_definition IS NOT NULL) " +
+                "CREATE UNIQUE INDEX [IX_Device_IpAddress_Port] " +
+                "ON [Device]([IpAddress],[Port]) WHERE [IsActive]=1");
+        }
+        catch { }
     }
 
     private static string dlg_Title(string error)
