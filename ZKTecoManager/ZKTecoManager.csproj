@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Platforms>x64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x86</Platforms>
+    <PlatformTarget>x86</PlatformTarget>
     <AssemblyName>ZKTecoManager</AssemblyName>
     <RootNamespace>ZKTecoManager</RootNamespace>
     <Configurations>Debug;Release</Configurations>
@@ -32,9 +32,9 @@
     <PackageReference Include="PdfSharpCore" Version="1.3.65" />
   </ItemGroup>
 
-  <!-- Pull SDK native DLLs (x64) — Link flattens them to the output root -->
+  <!-- Pull SDK native DLL (x86) — Link flattens it to the output root -->
   <ItemGroup>
-    <Content Include="Libs\x64\*.dll">
+    <Content Include="Libs\x86\*.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>%(Filename)%(Extension)</Link>
     </Content>
