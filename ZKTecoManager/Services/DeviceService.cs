@@ -65,49 +65,58 @@ public class DeviceService : IDeviceService, IDisposable
                 $"• Confirme el puerto en el reloj (por defecto 4370):\n" +
                 "  Menú → Comm → Ethernet → Port");
 
-        // Step 2: SDK handshake — try stored password first, then empty password
+        // Step 2: SDK handshake — try stored password, then "", then "0"
         return await Task.Run(() =>
         {
-            var zk = GetOrCreate(device);
+            var zk        = GetOrCreate(device);
+            var storedPwd = device.CommPassword ?? string.Empty;
 
-            // First attempt: stored CommPassword
-            if (!zk.IsConnected)
-                zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty);
+            // Passwords to try in order (skip duplicates)
+            var attempts = new[] { storedPwd, "", "0" }
+                .Distinct()
+                .ToArray();
+
+            string? connectedWith = null;
+            foreach (var pwd in attempts)
+            {
+                if (zk.IsConnected) break;
+                zk.Connect(timeout: 4000, password: pwd);
+                if (zk.IsConnected) { connectedWith = pwd; break; }
+            }
 
             if (zk.IsConnected)
-                return new ConnectionTestResult(true, null);
-
-            // Second attempt: if password was non-empty, retry with empty (device default)
-            var storedPwd = device.CommPassword ?? string.Empty;
-            if (storedPwd.Length > 0)
             {
-                zk.Connect(timeout: 4000, password: string.Empty);
-                if (zk.IsConnected)
-                    return new ConnectionTestResult(true,
-                        "⚠ Conectado con contraseña vacía. " +
-                        "La contraseña guardada en BD no coincide con el dispositivo. " +
-                        "Edite el dispositivo y deje CommPassword en blanco.");
+                if (connectedWith == storedPwd)
+                    return new ConnectionTestResult(true, null);
+
+                // Connected but with a different password — warn the user
+                var hint = connectedWith == "" ? "vacía" : $"\"{connectedWith}\"";
+                return new ConnectionTestResult(true,
+                    $"⚠ Conectado con contraseña {hint}.\n" +
+                    "Actualice el campo CommPassword en el formulario del dispositivo " +
+                    $"para que coincida con: {hint}");
             }
 
             var sdkError = zk.LastError;
-            var pwdHint  = storedPwd.Length == 0 ? "vacía" : $"{storedPwd.Length} caracteres";
             var localIp  = GetLocalIp();
+            var tried    = string.Join(", ", attempts.Select(p => p == "" ? "(vacía)" : $"\"{p}\""));
 
             return new ConnectionTestResult(false,
-                $"Puerto {device.Port} responde en {device.IpAddress} " +
-                $"pero el SDK rechazó la sesión (PullLastError={sdkError}).\n\n" +
-                $"IP de esta PC: {localIp}\n" +
-                $"Contraseña usada: {pwdHint}\n\n" +
-                "Causas más comunes (en orden de probabilidad):\n\n" +
-                "1. «Server IP» en el reloj no coincide con la IP de esta PC\n" +
-                $"   Menú → Comm → PC Connection → Server IP\n" +
-                $"   Cámbielo a 0.0.0.0 (cualquier PC) o a {localIp}\n\n" +
-                "2. CommPassword incorrecto\n" +
-                "   Menú → Comm → PC Connection Password\n" +
-                "   Si dice 0 o vacío, deje el campo en blanco en la app\n\n" +
-                "3. Otro software ZKTeco ocupa la conexión\n" +
-                "   (ZKTime, ZKBioSecurity, ZKAccess)\n\n" +
-                "4. Firmware incompatible con Pull SDK");
+                $"SDK rechazó la sesión — PullLastError = {sdkError}\n" +
+                $"IP dispositivo: {device.IpAddress}:{device.Port}\n" +
+                $"IP de esta PC:  {localIp}\n" +
+                $"Contraseñas probadas: {tried}\n\n" +
+                (sdkError == -2
+                    ? "Error -2 = contraseña incorrecta.\n" +
+                      "Verifique en el reloj:\n" +
+                      "  Menú → Comm → PC Connection Password\n" +
+                      "El valor exacto que muestre (ej. 12345) debe ir\n" +
+                      "en el campo CommPassword del dispositivo en la app."
+                    : "Causas posibles:\n" +
+                      "• Server IP del reloj no permite esta PC\n" +
+                      "  Menú → Comm → PC Connection → Server IP → 0.0.0.0\n" +
+                      "• Otro software ZKTeco ocupa la conexión\n" +
+                      "• Firmware incompatible con Pull SDK"));
         }, ct);
     }
 
