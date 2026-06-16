@@ -128,6 +128,39 @@ public class DeviceService : IDeviceService, IDisposable
         }, ct);
     }
 
+    public async Task<bool> SetUserOnDeviceAsync(Device device, string pin, string name, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var zk = GetOrCreate(device);
+            if (!zk.IsConnected && !zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty))
+                return false;
+            return zk.SetUser(pin, name);
+        }, ct);
+    }
+
+    public async Task<bool> SetCardOnDeviceAsync(Device device, string pin, string cardNumber, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var zk = GetOrCreate(device);
+            if (!zk.IsConnected && !zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty))
+                return false;
+            return zk.SetCard(pin, cardNumber);
+        }, ct);
+    }
+
+    public async Task<bool> DeleteUserFromDeviceAsync(Device device, string pin, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var zk = GetOrCreate(device);
+            if (!zk.IsConnected && !zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty))
+                return false;
+            return zk.DeleteUser(pin);
+        }, ct);
+    }
+
     public bool IsConnected(int deviceId)
     {
         lock (_poolLock)

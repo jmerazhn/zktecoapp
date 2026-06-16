@@ -28,7 +28,6 @@ public partial class App : Application
         var services = new ServiceCollection();
         ConfigureServices(services, config);
         _services = services.BuildServiceProvider();
-
         ServiceLocator.Initialize(_services);
 
         var mainWindow = _services.GetRequiredService<MainWindow>();
@@ -37,7 +36,7 @@ public partial class App : Application
 
     private static void ConfigureServices(IServiceCollection services, IConfiguration config)
     {
-        // EF Core
+        // EF Core (scoped → one DbContext per navigation scope)
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(config.GetConnectionString("DefaultConnection")));
 
@@ -51,15 +50,20 @@ public partial class App : Application
         services.AddScoped<IIncidentRepository, IncidentRepository>();
         services.AddScoped<IWorkShiftRepository, WorkShiftRepository>();
 
-        // Services (singleton — manages connection pool)
+        // Services (singleton — manage long-lived state)
         services.AddSingleton<IDeviceService, DeviceService>();
+        services.AddSingleton<IEmployeeService, EmployeeService>();
 
-        // ViewModels (transient — fresh instance per navigation)
-        services.AddTransient<DevicesViewModel>();
+        // ViewModels (scoped — resolved per navigation scope)
+        services.AddScoped<DevicesViewModel>();
+        services.AddScoped<EmployeesViewModel>();
 
-        // Views (transient)
-        services.AddTransient<DevicesView>();
-        services.AddTransient<MainWindow>();
+        // Views (scoped — same scope as their ViewModel)
+        services.AddScoped<DevicesView>();
+        services.AddScoped<EmployeesView>();
+
+        // Shell (singleton)
+        services.AddSingleton<MainWindow>();
 
         services.AddSingleton(config);
     }

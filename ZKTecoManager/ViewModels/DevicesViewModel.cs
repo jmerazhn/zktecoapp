@@ -1,10 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using System.Windows;
-using ZKTecoManager.Data.Repositories.Interfaces;
-using ZKTecoManager.Helpers;
+using ZKTecoManager.Data;
 using ZKTecoManager.Models.Entities;
 using ZKTecoManager.Models.Enums;
 using ZKTecoManager.Services;
@@ -16,8 +16,7 @@ namespace ZKTecoManager.ViewModels;
 public partial class DevicesViewModel : ViewModelBase
 {
     private readonly IDeviceService _deviceService;
-    private readonly IDeviceRepository _deviceRepo;
-    private readonly ICompanyRepository _companyRepo;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     [ObservableProperty]
     private ObservableCollection<DeviceItemViewModel> _devices = new();
@@ -30,30 +29,33 @@ public partial class DevicesViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(SyncInfoCommand))]
     private DeviceItemViewModel? _selectedDevice;
 
-    public DevicesViewModel(IDeviceService deviceService, IDeviceRepository deviceRepo, ICompanyRepository companyRepo)
+    public DevicesViewModel(IDeviceService deviceService, IServiceScopeFactory scopeFactory)
     {
         _deviceService = deviceService;
-        _deviceRepo = deviceRepo;
-        _companyRepo = companyRepo;
+        _scopeFactory = scopeFactory;
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task LoadAsync()
+    private async Task LoadAsync(CancellationToken ct = default)
     {
         await RunBusyAsync(async () =>
         {
-            var list = await _deviceRepo.FindAsync(d => d.IsActive);
-            // Load companies via include — reload with navigation props
-            using var scope = ServiceLocator.GetService<IServiceScopeFactory>().CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
-            var devices = await repo.FindAsync(d => d.IsActive);
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var devices = await db.Devices
+                .Include(d => d.Company)
+                .Where(d => d.IsActive)
+                .OrderBy(d => d.Name)
+                .AsNoTracking()
+                .ToListAsync(ct);
 
             Application.Current.Dispatcher.Invoke(() =>
             {
                 Devices.Clear();
-                foreach (var d in devices.OrderBy(x => x.Name))
+                foreach (var d in devices)
                 {
                     var vm = new DeviceItemViewModel(d);
                     if (_deviceService.IsConnected(d.Id))
@@ -67,7 +69,10 @@ public partial class DevicesViewModel : ViewModelBase
     [RelayCommand]
     private async Task AddAsync()
     {
-        var companies = await _companyRepo.GetActiveAsync();
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var companies = await db.Companies.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+
         var dialog = new DeviceFormDialog(companies);
         if (dialog.ShowDialog() != true) return;
 
@@ -75,21 +80,23 @@ public partial class DevicesViewModel : ViewModelBase
         device.CreatedAt = DateTime.UtcNow;
         device.UpdatedAt = DateTime.UtcNow;
 
-        await _deviceRepo.AddAsync(device);
-        await _deviceRepo.SaveChangesAsync();
-
+        db.Devices.Add(device);
+        await db.SaveChangesAsync();
         await LoadAsync();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task EditAsync()
     {
-        var companies = await _companyRepo.GetActiveAsync();
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var companies = await db.Companies.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+
         var dialog = new DeviceFormDialog(companies, SelectedDevice!.Device);
         if (dialog.ShowDialog() != true) return;
 
         var updated = dialog.Result!;
-        var entity = await _deviceRepo.GetByIdAsync(updated.Id);
+        var entity = await db.Devices.FindAsync(updated.Id);
         if (entity is null) return;
 
         entity.Name = updated.Name;
@@ -101,11 +108,8 @@ public partial class DevicesViewModel : ViewModelBase
         entity.Model = updated.Model;
         entity.UpdatedAt = DateTime.UtcNow;
 
-        // Reconnect if IP/port changed
         _deviceService.Disconnect(entity.Id);
-
-        await _deviceRepo.UpdateAsync(entity);
-        await _deviceRepo.SaveChangesAsync();
+        await db.SaveChangesAsync();
         await LoadAsync();
     }
 
@@ -114,20 +118,18 @@ public partial class DevicesViewModel : ViewModelBase
     {
         var result = MessageBox.Show(
             $"¿Eliminar el dispositivo '{SelectedDevice!.Name}'?",
-            "Confirmar eliminación",
-            MessageBoxButton.YesNo, MessageBoxImage.Warning);
-
+            "Confirmar eliminación", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes) return;
 
-        var entity = await _deviceRepo.GetByIdAsync(SelectedDevice.Id);
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var entity = await db.Devices.FindAsync(SelectedDevice.Id);
         if (entity is null) return;
 
         entity.IsActive = false;
         entity.UpdatedAt = DateTime.UtcNow;
         _deviceService.Disconnect(entity.Id);
-
-        await _deviceRepo.UpdateAsync(entity);
-        await _deviceRepo.SaveChangesAsync();
+        await db.SaveChangesAsync();
         await LoadAsync();
     }
 
@@ -137,12 +139,9 @@ public partial class DevicesViewModel : ViewModelBase
         var item = SelectedDevice!;
         item.Status = DeviceConnectionStatus.Connecting;
         StatusMessage = $"Conectando a {item.IpAddress}:{item.Port}...";
-
         var ok = await _deviceService.TestConnectionAsync(item.Device);
         item.Status = ok ? DeviceConnectionStatus.Connected : DeviceConnectionStatus.Error;
-        StatusMessage = ok
-            ? $"Conexión exitosa con {item.Name}"
-            : $"No se pudo conectar a {item.Name}";
+        StatusMessage = ok ? $"Conexión exitosa con {item.Name}" : $"No se pudo conectar a {item.Name}";
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -151,16 +150,10 @@ public partial class DevicesViewModel : ViewModelBase
         var item = SelectedDevice!;
         await RunBusyAsync(async () =>
         {
-            StatusMessage = $"Descargando logs de {item.Name}...";
             var result = await _deviceService.DownloadLogsAsync(item.Device);
-
             if (result.Success)
             {
-                // Refresh LastSync display
-                var entity = await _deviceRepo.GetByIdAsync(item.Id);
-                if (entity is not null) item.Device.LastSync = entity.LastSync;
                 item.Status = DeviceConnectionStatus.Connected;
-
                 MessageBox.Show(
                     result.NewLogs > 0
                         ? $"Se descargaron {result.NewLogs} registros nuevos."
@@ -184,16 +177,13 @@ public partial class DevicesViewModel : ViewModelBase
         var item = SelectedDevice!;
         await RunBusyAsync(async () =>
         {
-            StatusMessage = $"Sincronizando información de {item.Name}...";
             var result = await _deviceService.SyncDeviceInfoAsync(item.Device);
-
             if (result.Success)
             {
                 item.Status = DeviceConnectionStatus.Connected;
                 MessageBox.Show(
-                    $"Sincronización completada.\n" +
-                    $"Modelo: {result.Model ?? "N/D"}\n" +
-                    $"Serie:  {result.SerialNumber ?? "N/D"}\n" +
+                    $"Sincronización completada.\nModelo: {result.Model ?? "N/D"}\n" +
+                    $"Serie: {result.SerialNumber ?? "N/D"}\n" +
                     $"Hora del reloj: {result.DeviceTime?.ToString("HH:mm:ss") ?? "N/D"}",
                     "Sincronización exitosa", MessageBoxButton.OK, MessageBoxImage.Information);
             }
