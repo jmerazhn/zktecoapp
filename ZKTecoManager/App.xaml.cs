@@ -113,12 +113,54 @@ public partial class App : Application
             using var scope = services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.Database.EnsureCreated();
+            FixDeviceUniqueIndex(db);
             return (true, string.Empty);
         }
         catch (Exception ex)
         {
             return (false, ex.Message);
         }
+    }
+
+    // Replaces the old unfiltered unique index on Device(IpAddress,Port) with a
+    // filtered one (WHERE IsActive = 1) so soft-deleted rows don't block re-insertion.
+    private static void FixDeviceUniqueIndex(AppDbContext db)
+    {
+        db.Database.ExecuteSqlRaw("""
+            DECLARE @idx nvarchar(128) = (
+                SELECT i.name
+                FROM sys.indexes i
+                JOIN sys.tables t ON i.object_id = t.object_id
+                WHERE t.name = 'Device'
+                  AND i.is_unique = 1
+                  AND i.filter_definition IS NULL
+                  AND EXISTS (
+                      SELECT 1 FROM sys.index_columns ic
+                      JOIN sys.columns c
+                        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                      WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id
+                        AND c.name = 'IpAddress')
+                  AND EXISTS (
+                      SELECT 1 FROM sys.index_columns ic
+                      JOIN sys.columns c
+                        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                      WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id
+                        AND c.name = 'Port')
+            );
+            IF @idx IS NOT NULL
+                EXEC('DROP INDEX [' + @idx + '] ON [Device]');
+
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = 'IX_Device_IpAddress_Port'
+                  AND object_id = OBJECT_ID('Device')
+                  AND filter_definition IS NOT NULL)
+            BEGIN
+                CREATE UNIQUE INDEX [IX_Device_IpAddress_Port]
+                ON [Device]([IpAddress],[Port])
+                WHERE [IsActive] = 1;
+            END
+            """);
     }
 
     private static string dlg_Title(string error)

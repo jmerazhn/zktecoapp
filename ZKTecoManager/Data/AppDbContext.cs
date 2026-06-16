@@ -91,7 +91,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.Location).HasMaxLength(100);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
             e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-            e.HasIndex(x => new { x.IpAddress, x.Port }).IsUnique();
+            e.HasIndex(x => new { x.IpAddress, x.Port }).IsUnique()
+             .HasFilter("[IsActive] = 1");
             e.HasOne(x => x.Company)
              .WithMany(c => c.Devices)
              .HasForeignKey(x => x.CompanyId)

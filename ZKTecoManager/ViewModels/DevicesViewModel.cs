@@ -77,10 +77,29 @@ public partial class DevicesViewModel : ViewModelBase
         if (dialog.ShowDialog() != true) return;
 
         var device = dialog.Result!;
-        device.CreatedAt = DateTime.UtcNow;
-        device.UpdatedAt = DateTime.UtcNow;
 
-        db.Devices.Add(device);
+        // Check if a soft-deleted device with the same IP:Port exists — reactivate it
+        var existing = await db.Devices
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(d => d.IpAddress == device.IpAddress
+                                   && d.Port      == device.Port
+                                   && !d.IsActive);
+        if (existing is not null)
+        {
+            existing.Name         = device.Name;
+            existing.CompanyId    = device.CompanyId;
+            existing.CommPassword = device.CommPassword;
+            existing.Location     = device.Location;
+            existing.IsActive     = true;
+            existing.UpdatedAt    = DateTime.UtcNow;
+        }
+        else
+        {
+            device.CreatedAt = DateTime.UtcNow;
+            device.UpdatedAt = DateTime.UtcNow;
+            db.Devices.Add(device);
+        }
+
         await db.SaveChangesAsync();
         await LoadAsync();
     }
