@@ -81,15 +81,9 @@ public class ZKTecoDevice : IDisposable
 
     public DateTime? GetDeviceTime()
     {
-        lock (_lock)
-        {
-            EnsureConnected();
-            int yr = 0, mo = 0, dy = 0, hh = 0, mm = 0, ss = 0;
-            int r = ZKTecoSdk.GetDeviceTime(_handle, ref yr, ref mo, ref dy,
-                                             ref hh, ref mm, ref ss);
-            if (r < 0) return null;
-            return new DateTime(yr, mo, dy, hh, mm, ss);
-        }
+        var raw = GetParam("DateTime");
+        if (raw is null) return null;
+        return DateTime.TryParse(raw, out var dt) ? dt : null;
     }
 
     public bool SyncTime()

@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Platforms>x86</Platforms>
+    <Platforms>x64</Platforms>
     <PlatformTarget>x86</PlatformTarget>
     <AssemblyName>ZKTecoManager</AssemblyName>
     <RootNamespace>ZKTecoManager</RootNamespace>
@@ -32,11 +32,13 @@
     <PackageReference Include="PdfSharpCore" Version="1.3.65" />
   </ItemGroup>
 
-  <!-- Pull SDK native DLL (x86) — Link flattens it to the output root -->
+  <!-- plcommpro_legacy.dll = SysWOW64 v1 (114 KB, 2014). Only imports KERNEL32.dll — no
+       plcommutils.dll needed. The new SDK 2.2.1.18 (376 KB) requires encrypted handshake
+       that older devices reject with -201; the legacy version uses the plain protocol. -->
   <ItemGroup>
-    <Content Include="Libs\x86\*.dll">
+    <Content Include="Libs\x86\plcommpro_legacy.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>%(Filename)%(Extension)</Link>
+      <Link>plcommpro.dll</Link>
     </Content>
   </ItemGroup>
 

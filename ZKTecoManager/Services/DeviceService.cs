@@ -23,7 +23,6 @@ public class DeviceService : IDeviceService, IDisposable
 
     public async Task<ConnectionTestResult> TestConnectionAsync(Device device, CancellationToken ct = default)
     {
-        // Step 1: ICMP ping — ¿llega el host?
         bool pingOk;
         try
         {
@@ -43,81 +42,73 @@ public class DeviceService : IDeviceService, IDisposable
                 "• Algunos relojes requieren reinicio después de cambiar la IP\n" +
                 "• Verifique que el reloj y la PC estén en la misma red/subred");
 
-        // Step 2: TCP port — ¿responde el puerto?
-        bool portOpen;
-        try
+        ConnectionTestResult? sdkResult = null;
+
+        var sdkThread = new System.Threading.Thread(() =>
         {
-            using var tcp = new TcpClient();
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(1500);
-            await tcp.ConnectAsync(device.IpAddress, device.Port, cts.Token);
-            portOpen = true;
-        }
-        catch { portOpen = false; }
-
-        if (!portOpen)
-            return new ConnectionTestResult(false,
-                $"El reloj responde al ping en {device.IpAddress} " +
-                $"pero el puerto {device.Port} está bloqueado.\n\n" +
-                "Qué verificar:\n" +
-                $"• Firewall de Windows: permita el puerto {device.Port} TCP\n" +
-                "• Firewall del router/switch entre la PC y el reloj\n" +
-                $"• Confirme el puerto en el reloj (por defecto 4370):\n" +
-                "  Menú → Comm → Ethernet → Port");
-
-        // Step 2: SDK handshake — try stored password, then "", then "0"
-        return await Task.Run(() =>
-        {
-            var zk        = GetOrCreate(device);
-            var storedPwd = device.CommPassword ?? string.Empty;
-
-            // Passwords to try in order (skip duplicates)
-            var attempts = new[] { storedPwd, "", "0" }
-                .Distinct()
-                .ToArray();
-
-            string? connectedWith = null;
-            foreach (var pwd in attempts)
+            try
             {
-                if (zk.IsConnected) break;
-                zk.Connect(timeout: 4000, password: pwd);
-                if (zk.IsConnected) { connectedWith = pwd; break; }
-            }
+                using var zk  = new ZKTecoDevice(device.IpAddress, device.Port);
+                var storedPwd = device.CommPassword ?? string.Empty;
+                var attempts  = new[] { storedPwd, "" }.Distinct().ToArray();
 
-            if (zk.IsConnected)
+                string? connectedWith = null;
+                foreach (var pwd in attempts)
+                {
+                    if (zk.IsConnected) break;
+                    zk.Connect(timeout: 4000, password: pwd);
+                    if (zk.IsConnected) { connectedWith = pwd; break; }
+                }
+
+                if (zk.IsConnected)
+                {
+                    if (connectedWith != storedPwd)
+                    {
+                        var hint = connectedWith == "" ? "vacía" : $"\"{connectedWith}\"";
+                        sdkResult = new ConnectionTestResult(true,
+                            $"⚠ Conectado con contraseña {hint}.\n" +
+                            "Actualice CommPassword en el formulario del dispositivo.");
+                    }
+                    else
+                    {
+                        sdkResult = new ConnectionTestResult(true, null);
+                    }
+                }
+                else
+                {
+                    var sdkError = zk.LastError;
+                    string detail = sdkError switch
+                    {
+                        -2   => "Error -2 = contraseña incorrecta.\n" +
+                                "Verifique: Menú → Comm → PC Connection Password",
+                        -107 => "Error -107 = sesión rechazada por el dispositivo.\n" +
+                                "Verifique: Menú → Comm → PC Connection → Server IP → 0.0.0.0",
+                        _    => "Verifique: Menú → Comm → PC Connection → Server IP → 0.0.0.0"
+                    };
+                    sdkResult = new ConnectionTestResult(false,
+                        $"SDK rechazó la sesión — PullLastError = {sdkError}\n" +
+                        $"IP dispositivo: {device.IpAddress}:{device.Port}\n" +
+                        $"IP de esta PC:  {GetLocalIp()}\n\n" + detail);
+                }
+            }
+            catch (Exception ex)
             {
-                if (connectedWith == storedPwd)
-                    return new ConnectionTestResult(true, null);
-
-                // Connected but with a different password — warn the user
-                var hint = connectedWith == "" ? "vacía" : $"\"{connectedWith}\"";
-                return new ConnectionTestResult(true,
-                    $"⚠ Conectado con contraseña {hint}.\n" +
-                    "Actualice el campo CommPassword en el formulario del dispositivo " +
-                    $"para que coincida con: {hint}");
+                sdkResult = new ConnectionTestResult(false, ex.Message);
             }
+        });
 
-            var sdkError = zk.LastError;
-            var localIp  = GetLocalIp();
-            var tried    = string.Join(", ", attempts.Select(p => p == "" ? "(vacía)" : $"\"{p}\""));
+        sdkThread.SetApartmentState(System.Threading.ApartmentState.STA);
+        sdkThread.IsBackground = true;
+        sdkThread.Start();
 
+        bool finished = await Task.Run(() => sdkThread.Join(15_000), ct);
+
+        if (!finished || sdkResult is null)
             return new ConnectionTestResult(false,
-                $"SDK rechazó la sesión — PullLastError = {sdkError}\n" +
-                $"IP dispositivo: {device.IpAddress}:{device.Port}\n" +
-                $"IP de esta PC:  {localIp}\n" +
-                $"Contraseñas probadas: {tried}\n\n" +
-                (sdkError == -2
-                    ? "Error -2 = contraseña incorrecta.\n" +
-                      "Verifique en el reloj:\n" +
-                      "  Menú → Comm → PC Connection Password\n" +
-                      "El valor exacto que muestre (ej. 12345) debe ir\n" +
-                      "en el campo CommPassword del dispositivo en la app."
-                    : "Causas posibles:\n" +
-                      "• Server IP del reloj no permite esta PC\n" +
-                      "  Menú → Comm → PC Connection → Server IP → 0.0.0.0\n" +
-                      "• Otro software ZKTeco ocupa la conexión\n" +
-                      "• Firmware incompatible con Pull SDK"));
-        }, ct);
+                $"Timeout (15 s): el SDK no respondió.\n" +
+                $"IP dispositivo: {device.IpAddress}:{device.Port}");
+
+        return sdkResult;
     }
 
     public async Task<DeviceSyncResult> SyncDeviceInfoAsync(Device device, CancellationToken ct = default)

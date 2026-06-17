@@ -35,10 +35,4 @@ internal static class ZKTecoSdk
     public static extern int DeleteDeviceData(IntPtr handle, string tableName,
         string data, string options);
 
-    [DllImport(DllName, EntryPoint = "GetDeviceTime", CharSet = CharSet.Ansi)]
-    public static extern int GetDeviceTime(IntPtr handle, ref int year, ref int month,
-        ref int day, ref int hour, ref int minute, ref int second);
-
-    [DllImport(DllName, EntryPoint = "RestartDevice")]
-    public static extern int RestartDevice(IntPtr handle);
 }
