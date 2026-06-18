@@ -50,7 +50,7 @@ public class DeviceService : IDeviceService, IDisposable
             {
                 using var zk  = new ZKTecoDevice(device.IpAddress, device.Port);
                 var storedPwd = device.CommPassword ?? string.Empty;
-                var attempts  = new[] { storedPwd, "" }.Distinct().ToArray();
+                var attempts  = new[] { storedPwd, "", "0" }.Distinct().ToArray();
 
                 string? connectedWith = null;
                 foreach (var pwd in attempts)
@@ -79,7 +79,14 @@ public class DeviceService : IDeviceService, IDisposable
                     var sdkError = zk.LastError;
                     string detail = sdkError switch
                     {
-                        -2   => "Error -2 = contraseña incorrecta.\n" +
+                        -2   => "Error -2 = el reloj no respondió al comando de conexión " +
+                                "(no es error de contraseña — ese es el código -14).\n" +
+                                "Causas típicas: el firmware no soporta este protocolo del SDK, " +
+                                "o algo en la red (router/firewall entre subredes) descarta la " +
+                                "respuesta del reloj.\n" +
+                                "Pruebe conectar desde un equipo en la misma subred que el reloj " +
+                                "(192.168.4.x) para descartar un problema de ruteo.",
+                        -14  => "Error -14 = contraseña incorrecta.\n" +
                                 "Verifique: Menú → Comm → PC Connection Password",
                         -107 => "Error -107 = sesión rechazada por el dispositivo.\n" +
                                 "Verifique: Menú → Comm → PC Connection → Server IP → 0.0.0.0",
@@ -209,38 +216,39 @@ public class DeviceService : IDeviceService, IDisposable
         }, ct);
     }
 
-    public async Task<bool> SetUserOnDeviceAsync(Device device, string pin, string name, CancellationToken ct = default)
+    public async Task<(bool Success, int ErrorCode)> SetUserOnDeviceAsync(Device device, string pin, string name, CancellationToken ct = default)
     {
         return await Task.Run(() =>
         {
             var zk = GetOrCreate(device);
             if (!zk.IsConnected && !zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty))
-                return false;
-            return zk.SetUser(pin, name);
+                return (false, zk.LastError);
+            return (zk.SetUser(pin, name), zk.LastReturnCode);
         }, ct);
     }
 
-    public async Task<bool> SetCardOnDeviceAsync(Device device, string pin, string cardNumber, CancellationToken ct = default)
+    public async Task<(bool Success, int ErrorCode)> SetCardOnDeviceAsync(Device device, string pin, string cardNumber, CancellationToken ct = default)
     {
         return await Task.Run(() =>
         {
             var zk = GetOrCreate(device);
             if (!zk.IsConnected && !zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty))
-                return false;
-            return zk.SetCard(pin, cardNumber);
+                return (false, zk.LastError);
+            return (zk.SetCard(pin, cardNumber), zk.LastReturnCode);
         }, ct);
     }
 
-    public async Task<bool> DeleteUserFromDeviceAsync(Device device, string pin, CancellationToken ct = default)
+    public async Task<(bool Success, int ErrorCode)> DeleteUserFromDeviceAsync(Device device, string pin, CancellationToken ct = default)
     {
         return await Task.Run(() =>
         {
             var zk = GetOrCreate(device);
             if (!zk.IsConnected && !zk.Connect(timeout: 4000, password: device.CommPassword ?? string.Empty))
-                return false;
-            return zk.DeleteUser(pin);
+                return (false, zk.LastError);
+            return (zk.DeleteUser(pin), zk.LastReturnCode);
         }, ct);
     }
+
 
     public bool IsConnected(int deviceId)
     {

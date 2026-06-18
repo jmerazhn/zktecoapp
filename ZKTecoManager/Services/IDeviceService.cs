@@ -11,9 +11,9 @@ public interface IDeviceService
     Task<ConnectionTestResult> TestConnectionAsync(Device device, CancellationToken ct = default);
     Task<DeviceSyncResult> SyncDeviceInfoAsync(Device device, CancellationToken ct = default);
     Task<LogDownloadResult> DownloadLogsAsync(Device device, CancellationToken ct = default);
-    Task<bool> SetUserOnDeviceAsync(Device device, string pin, string name, CancellationToken ct = default);
-    Task<bool> SetCardOnDeviceAsync(Device device, string pin, string cardNumber, CancellationToken ct = default);
-    Task<bool> DeleteUserFromDeviceAsync(Device device, string pin, CancellationToken ct = default);
+    Task<(bool Success, int ErrorCode)> SetUserOnDeviceAsync(Device device, string pin, string name, CancellationToken ct = default);
+    Task<(bool Success, int ErrorCode)> SetCardOnDeviceAsync(Device device, string pin, string cardNumber, CancellationToken ct = default);
+    Task<(bool Success, int ErrorCode)> DeleteUserFromDeviceAsync(Device device, string pin, CancellationToken ct = default);
     bool IsConnected(int deviceId);
     void Disconnect(int deviceId);
     void DisconnectAll();

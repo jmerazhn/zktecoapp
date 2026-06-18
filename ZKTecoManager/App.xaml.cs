@@ -6,6 +6,7 @@ using ZKTecoManager.Data;
 using ZKTecoManager.Data.Repositories;
 using ZKTecoManager.Data.Repositories.Interfaces;
 using ZKTecoManager.Helpers;
+using ZKTecoManager.Infrastructure.Adms;
 using ZKTecoManager.Services;
 using ZKTecoManager.ViewModels;
 using ZKTecoManager.Views;
@@ -53,8 +54,30 @@ public partial class App : Application
             connCfg.Save();
         }
 
+        StartAdmsServer(_services, config);
+
         var mainWindow = _services.GetRequiredService<MainWindow>();
         mainWindow.Show();
+    }
+
+    // EXPERIMENTO (Fase A): servidor ADMS/Push para relojes cuyo firmware no soporta
+    // escritura remota de usuarios vía Pull SDK ni Standalone SDK (ver plan/notas del
+    // proyecto). Falla en silencio salvo un aviso — el arranque de la app no debe
+    // depender de esto.
+    private static void StartAdmsServer(IServiceProvider services, IConfiguration config)
+    {
+        var port = config.GetValue<int?>("AdmsPort") ?? 8080;
+        try
+        {
+            services.GetRequiredService<AdmsServer>().Start(port);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"No se pudo iniciar el servidor ADMS en el puerto {port}: {ex.Message}\n\n" +
+                $"Revisa adms-debug.log o ejecuta:\nnetsh http add urlacl url=http://+:{port}/ user=Everyone",
+                "ADMS no disponible", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     internal static IServiceProvider BuildServiceProvider(IConfiguration config, string connectionString)
@@ -68,7 +91,12 @@ public partial class App : Application
     {
         // EF Core (scoped → one DbContext per navigation scope)
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(connectionString));
+            options.UseSqlServer(connectionString, sql =>
+                // GFZKTECO runs at SQL Server compatibility level 110 (confirmed via
+                // sys.databases), which doesn't support OPENJSON. EF Core 8 defaults to
+                // OPENJSON for list.Contains(...) translation, so tell it the real level
+                // to fall back to the older IN (@p0, @p1, ...) form.
+                sql.UseCompatibilityLevel(110)));
 
         // Repositories (scoped)
         services.AddScoped<ICompanyRepository, CompanyRepository>();
@@ -85,6 +113,10 @@ public partial class App : Application
         services.AddSingleton<IEmployeeService, EmployeeService>();
         services.AddSingleton<IAttendanceService, AttendanceService>();
         services.AddSingleton<IReportService, ReportService>();
+
+        // ADMS/Push (experimento Fase A — ver plan del proyecto)
+        services.AddSingleton<AdmsCommandQueue>();
+        services.AddSingleton<AdmsServer>();
 
         // ViewModels (scoped — resolved per navigation scope)
         services.AddScoped<DevicesViewModel>();
@@ -156,6 +188,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         try { ServiceLocator.GetService<IDeviceService>().DisconnectAll(); } catch { }
+        try { ServiceLocator.GetService<AdmsServer>().Stop(); } catch { }
         (_services as IDisposable)?.Dispose();
         base.OnExit(e);
     }

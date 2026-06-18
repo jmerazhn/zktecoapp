@@ -129,20 +129,39 @@ public partial class EmployeesViewModel : ViewModelBase
             // Load current shifts and device counts in one query each
             var empIds = employees.Select(e => e.Id).ToList();
 
+            // Projection avoids Include + Contains CTE generation bug in EF Core 8 + SQL Server.
             var today = DateOnly.FromDateTime(DateTime.Today);
-            var activeShifts = await db.EmployeeShifts
-                .Include(es => es.Shift)
-                .Where(es => empIds.Contains(es.EmployeeId)
-                          && es.EffectiveFrom <= today
-                          && (es.EffectiveTo == null || es.EffectiveTo >= today))
-                .AsNoTracking()
-                .ToListAsync(ct);
+            Dictionary<int, string> shiftByEmployee;
+            Dictionary<int, int> deviceCounts;
 
-            var deviceCounts = await db.DeviceUsers
-                .Where(du => empIds.Contains(du.EmployeeId))
-                .GroupBy(du => du.EmployeeId)
-                .Select(g => new { EmployeeId = g.Key, Count = g.Count() })
-                .ToListAsync(ct);
+            if (empIds.Count == 0)
+            {
+                shiftByEmployee = new();
+                deviceCounts    = new();
+            }
+            else
+            {
+                var shiftRows = await db.EmployeeShifts
+                    .Where(es => empIds.Contains(es.EmployeeId)
+                              && es.EffectiveFrom <= today
+                              && (es.EffectiveTo == null || es.EffectiveTo >= today))
+                    .Select(es => new { es.EmployeeId, es.EffectiveFrom, ShiftName = es.Shift.Name })
+                    .AsNoTracking()
+                    .ToListAsync(ct);
+
+                shiftByEmployee = shiftRows
+                    .GroupBy(r => r.EmployeeId)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.OrderByDescending(r => r.EffectiveFrom).First().ShiftName);
+
+                deviceCounts = (await db.DeviceUsers
+                        .Where(du => empIds.Contains(du.EmployeeId))
+                        .Select(du => du.EmployeeId)
+                        .ToListAsync(ct))
+                    .GroupBy(id => id)
+                    .ToDictionary(g => g.Key, g => g.Count());
+            }
 
             Application.Current.Dispatcher.Invoke(() =>
             {
@@ -150,12 +169,8 @@ public partial class EmployeesViewModel : ViewModelBase
                 foreach (var emp in employees)
                 {
                     var vm = new EmployeeItemViewModel(emp);
-                    var shift = activeShifts
-                        .Where(es => es.EmployeeId == emp.Id)
-                        .OrderByDescending(es => es.EffectiveFrom)
-                        .FirstOrDefault();
-                    vm.CurrentShift = shift?.Shift.Name ?? "Sin turno";
-                    vm.EnrolledDevices = deviceCounts.FirstOrDefault(d => d.EmployeeId == emp.Id)?.Count ?? 0;
+                    vm.CurrentShift    = shiftByEmployee.TryGetValue(emp.Id, out var s) ? s : "Sin turno";
+                    vm.EnrolledDevices = deviceCounts.GetValueOrDefault(emp.Id, 0);
                     Employees.Add(vm);
                 }
             });

@@ -1,7 +1,7 @@
 <Window x:Class="ZKTecoManager.Views.Dialogs.DeviceEnrollmentDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Enrolamiento en Dispositivos" Width="580" Height="440"
+        Title="Enrolamiento en Dispositivos" Width="720" Height="440"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource BackgroundBrush}">
 
@@ -49,6 +49,19 @@
                                         Style="{Binding ActionStyle}"
                                         IsEnabled="{Binding IsIdle}"
                                         Click="ActionButton_Click"
+                                        Tag="{Binding}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <!-- EXPERIMENTO (Fase A): prueba DATA UPDATE USERINFO via ADMS/Push -->
+                    <DataGridTemplateColumn Header="ADMS (prueba)" Width="140">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Width="120" Height="28" Margin="6,0" FontSize="11"
+                                        Content="Probar ADMS"
+                                        Style="{StaticResource AccentButton}"
+                                        IsEnabled="{Binding IsIdle}"
+                                        Click="TestAdmsButton_Click"
                                         Tag="{Binding}"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>

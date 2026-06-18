@@ -75,7 +75,11 @@ public class ZKTecoDevice : IDisposable
             int ret = ZKTecoSdk.GetDeviceParam(_handle, ref buf[0], buf.Length, paramName);
             if (ret < 0) return null;
             int end = Array.IndexOf(buf, (byte)0);
-            return Encoding.UTF8.GetString(buf, 0, end < 0 ? buf.Length : end);
+            var raw = Encoding.UTF8.GetString(buf, 0, end < 0 ? buf.Length : end);
+
+            // El SDK devuelve "paramName=valor" (igual que GetDeviceData), no solo el valor.
+            var prefix = paramName + "=";
+            return raw.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? raw[prefix.Length..] : raw;
         }
     }
 
@@ -127,6 +131,8 @@ public class ZKTecoDevice : IDisposable
 
     // ── Users ─────────────────────────────────────────────────────────────────
 
+    public int LastReturnCode { get; private set; }
+
     public bool SetUser(string pin, string name, string password = "", int privilege = 0)
     {
         lock (_lock)
@@ -134,7 +140,10 @@ public class ZKTecoDevice : IDisposable
             EnsureConnected();
             string data = $"Pin={pin}\tName={name}\tPri={privilege}\t" +
                           $"Passwd={password}\tCard=\tGrp=1\tTZ=1\tVerify=0";
-            return ZKTecoSdk.SetDeviceData(_handle, "user", data, "") == 0;
+            int ret = ZKTecoSdk.SetDeviceData(_handle, "user", data, "");
+            LastReturnCode = ret;
+            if (ret != 0) LastError = ZKTecoSdk.PullLastError();
+            return ret == 0;
         }
     }
 
@@ -143,7 +152,10 @@ public class ZKTecoDevice : IDisposable
         lock (_lock)
         {
             EnsureConnected();
-            return ZKTecoSdk.DeleteDeviceData(_handle, "user", $"Pin={pin}", "") >= 0;
+            int ret = ZKTecoSdk.DeleteDeviceData(_handle, "user", $"Pin={pin}", "");
+            LastReturnCode = ret;
+            if (ret < 0) LastError = ZKTecoSdk.PullLastError();
+            return ret >= 0;
         }
     }
 
@@ -153,7 +165,10 @@ public class ZKTecoDevice : IDisposable
         {
             EnsureConnected();
             string data = $"Pin={pin}\tCard={cardNumber}";
-            return ZKTecoSdk.SetDeviceData(_handle, "user", data, "") == 0;
+            int ret = ZKTecoSdk.SetDeviceData(_handle, "user", data, "");
+            LastReturnCode = ret;
+            if (ret != 0) LastError = ZKTecoSdk.PullLastError();
+            return ret == 0;
         }
     }
 

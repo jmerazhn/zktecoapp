@@ -63,6 +63,25 @@ public partial class DeviceEnrollmentDialog : Window
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    // EXPERIMENTO (Fase A): prueba el protocolo ADMS/Push como alternativa, ya que
+    // tanto Pull SDK como Standalone SDK confirmaron que este firmware no soporta
+    // escritura remota de usuarios.
+    private async void TestAdmsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not EnrollmentItem item) return;
+
+        item.IsIdle = false;
+        TxtStatus.Text = $"Probando ADMS en {item.DeviceName}...";
+
+        var (success, detail) = await _employeeService.TestAdmsEnrollOnDeviceAsync(_employee, item.Device);
+
+        TxtStatus.Text = success
+            ? $"✔ ADMS funcionó en {item.DeviceName}: {detail}"
+            : $"✖ ADMS falló en {item.DeviceName}: {detail}";
+
+        item.IsIdle = true;
+    }
 }
 
 // ── Item ViewModel (local to dialog) ─────────────────────────────────────────

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using ZKTecoManager.Models.Entities;
 using ZKTecoManager.Models.Enums;
 
@@ -7,6 +8,41 @@ namespace ZKTecoManager.Data;
 public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        ApplyTimestamps();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    public override int SaveChanges()
+    {
+        ApplyTimestamps();
+        return base.SaveChanges();
+    }
+
+    private void ApplyTimestamps()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                TrySet(entry, "CreatedAt", now);
+                TrySet(entry, "UpdatedAt", now);
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                TrySet(entry, "UpdatedAt", now);
+            }
+        }
+    }
+
+    private static void TrySet(EntityEntry entry, string property, object value)
+    {
+        var prop = entry.Properties.FirstOrDefault(p => p.Metadata.Name == property);
+        if (prop != null) prop.CurrentValue = value;
+    }
 
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Department> Departments => Set<Department>();
@@ -33,8 +69,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.Address).HasMaxLength(200);
             e.Property(x => x.Phone).HasMaxLength(20);
             e.Property(x => x.Email).HasMaxLength(100);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasIndex(x => x.Name).IsUnique();
         });
 
@@ -44,8 +80,8 @@ public class AppDbContext : DbContext
             e.ToTable("Department");
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(100).IsRequired();
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
             e.HasOne(x => x.Company)
              .WithMany(c => c.Departments)
@@ -63,8 +99,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.LastName).HasMaxLength(80).IsRequired();
             e.Property(x => x.Position).HasMaxLength(100);
             e.Property(x => x.CardNumber).HasMaxLength(20);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasIndex(x => new { x.CompanyId, x.EmployeeCode }).IsUnique();
             e.Ignore(x => x.FullName);
             e.HasOne(x => x.Company)
@@ -89,8 +125,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.SerialNumber).HasMaxLength(50);
             e.Property(x => x.Model).HasMaxLength(50);
             e.Property(x => x.Location).HasMaxLength(100);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasIndex(x => new { x.IpAddress, x.Port }).IsUnique()
              .HasFilter("[IsActive] = 1");
             e.HasOne(x => x.Company)
@@ -106,7 +142,7 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.PinOnDevice).HasMaxLength(20).IsRequired();
             e.Property(x => x.CardNumber).HasMaxLength(20);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasIndex(x => new { x.DeviceId, x.EmployeeId }).IsUnique();
             e.HasOne(x => x.Device)
              .WithMany(d => d.DeviceUsers)
@@ -127,7 +163,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.StartTime).HasColumnType("time(0)");
             e.Property(x => x.EndTime).HasColumnType("time(0)");
             e.Property(x => x.ToleranceMinutes).HasDefaultValue(0);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasOne(x => x.Company)
              .WithMany(c => c.WorkShifts)
              .HasForeignKey(x => x.CompanyId)
@@ -162,7 +198,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.WorkCode).HasMaxLength(10);
             e.Property(x => x.RawData).HasMaxLength(500);
             e.Property(x => x.IsProcessed).HasDefaultValue(false);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasOne(x => x.Device)
              .WithMany(d => d.AttendanceLogs)
              .HasForeignKey(x => x.DeviceId)
@@ -184,8 +220,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.Status).HasColumnType("tinyint").HasConversion<byte>()
              .HasDefaultValue(AttendanceStatus.Pending);
             e.Property(x => x.Notes).HasMaxLength(200);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
-            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasIndex(x => new { x.EmployeeId, x.WorkDate }).IsUnique();
             e.HasOne(x => x.Employee)
              .WithMany(emp => emp.AttendanceRecords)
@@ -205,7 +241,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.IncidentType).HasColumnType("tinyint").HasConversion<byte>();
             e.Property(x => x.Description).HasMaxLength(300);
             e.Property(x => x.ApprovedBy).HasMaxLength(100);
-            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("SYSUTCDATETIME()").ValueGeneratedNever();
             e.HasOne(x => x.Employee)
              .WithMany(emp => emp.Incidents)
              .HasForeignKey(x => x.EmployeeId)
